@@ -1,0 +1,8 @@
+# Studio UI + orchestration. Heavy ML deps (torch, WAN's requirements, audiocraft)
+# are installed by setup.sh so we don't fight upstream version pins here.
+gradio>=4.44.0
+huggingface_hub>=0.26.0
+hf_transfer>=0.1.8
+imageio-ffmpeg>=0.5.1
+Pillow>=10.3.0
+numpy>=1.26.0

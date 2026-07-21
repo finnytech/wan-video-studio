@@ -1,0 +1,19 @@
+# virtualenv / caches
+.venv/
+__pycache__/
+*.pyc
+.cache/
+
+# large artifacts — never commit weights or renders
+models/
+outputs/
+*.mp4
+*.wav
+outputs/
+*.safetensors
+*.pth
+*.bin
+*.gguf
+
+# env
+.env
