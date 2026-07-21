@@ -82,6 +82,50 @@ if [ -f "$MODELS_DIR/Wan2.2/requirements.txt" ]; then
   rm -f "$WAN_REQS_FILTERED"
 fi
 
+# --- 6b. guard WAN imports + smoke-test the t2v chain ---------------------
+# WAN's __init__ eagerly imports i2v/s2v/ti2v/animate (needing decord/peft/...
+# which aren't in its requirements.txt and often lack cp312 wheels). We only use
+# t2v, so guard those imports, then ACTUALLY try `import wan` here -- catching
+# any remaining missing dep now, at setup time, instead of at expensive GPU
+# render time. Whatever is still missing gets auto-installed (bounded loop).
+WAN_INIT="$MODELS_DIR/Wan2.2/wan/__init__.py"
+if [ -f "$WAN_INIT" ]; then
+  echo "==> guarding WAN optional-model imports (t2v-only; skips decord/peft/etc.)"
+  "$PYBIN" "$ROOT/scripts/patch_wan.py" "$WAN_INIT" || true
+
+  echo "==> smoke-testing 'import wan' + auto-healing any missing deps"
+  _wan_missing() {
+    ( cd "$MODELS_DIR/Wan2.2" && "$PYBIN" - <<'PY' 2>/dev/null
+import importlib, sys
+try:
+    wan = importlib.import_module("wan")
+    if getattr(wan, "WanT2V", None) is None:
+        importlib.import_module("wan.text2video")  # force the hard t2v import
+    print("OK")
+except ModuleNotFoundError as e:
+    print((e.name or "").split(".")[0])
+except Exception:
+    print("OK")  # non-missing import-time error: stop looping, don't mask it
+PY
+)
+  }
+  for _i in 1 2 3 4 5 6 7 8; do
+    miss="$(_wan_missing)"
+    [ "$miss" = "OK" ] && { echo "   import wan OK ✓"; break; }
+    [ -z "$miss" ] && { echo "   import wan: unknown import error (see run log)"; break; }
+    case "$miss" in
+      cv2)     pkg="opencv-python" ;;
+      PIL)     pkg="Pillow" ;;
+      sklearn) pkg="scikit-learn" ;;
+      decord)  pkg="eva-decord" ;;   # decord has no cp312 wheel; eva-decord fork does
+      yaml)    pkg="PyYAML" ;;
+      *)       pkg="$miss" ;;
+    esac
+    echo "   'import wan' needs '$miss' -> installing $pkg"
+    PIP install "$pkg" || { echo "   !! could not install $pkg (video may fail; see logs)"; break; }
+  done
+fi
+
 # --- 7. AudioCraft (Meta AudioGen + MusicGen) -----------------------------
 # Optional sound stage. Video always works without it.
 #
@@ -99,6 +143,7 @@ else
     PIP install \
       "av>=12.0.0" einops encodec julius num2words omegaconf \
       "hydra-core>=1.1" hydra_colorlog "spacy>=3.7,<3.9" sentencepiece flashy \
+      librosa soundfile torchmetrics \
       || echo "!! some audiocraft runtime deps failed (sound stage may be off)"
   else
     echo "!! audiocraft install failed (video still works; sound stage disabled)"

@@ -16,6 +16,7 @@ Run:  python scripts/preflight.py            # core check
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
@@ -39,6 +40,35 @@ def _has_weights(path) -> bool:
         if any(path.rglob(pat)):
             return True
     return False
+
+
+def _wan_import_error() -> str | None:
+    """Real t2v health check: does ``import wan`` succeed on a MISSING module?
+
+    WAN's ``wan/__init__.py`` eagerly imports several model families. run.sh
+    guards the non-t2v ones, so this should pass; if a module is still missing,
+    a CORE t2v dep is absent and setup must run. This runs in preflight's own
+    process (separate from the app), so the heavy import can't pollute the app.
+    Non-missing import errors are ignored here -- we don't force reinstalls for
+    unrelated runtime issues.
+    """
+    code_dir = config.VIDEO_CODE_DIR
+    if not (code_dir / "generate.py").exists():
+        return None  # already reported separately as wan2.2-code
+    cwd0 = os.getcwd()
+    sys.path.insert(0, str(code_dir))
+    try:
+        os.chdir(str(code_dir))
+        import importlib
+
+        importlib.import_module("wan")
+        return None
+    except ModuleNotFoundError as e:  # noqa: BLE001
+        return f"missing {e.name}"
+    except Exception:  # noqa: BLE001
+        return None  # non-missing import error: don't trigger an endless reinstall
+    finally:
+        os.chdir(cwd0)
 
 
 def main() -> int:
@@ -70,6 +100,12 @@ def main() -> int:
     # --- WAN 2.2 T2V-A14B weights ---
     if not _has_weights(config.VIDEO_WEIGHTS_DIR):
         core_missing.append("wan2.2-weights")
+
+    # --- WAN import chain actually works (only worth checking if basics are OK) ---
+    if not core_missing:
+        wan_err = _wan_import_error()
+        if wan_err:
+            core_missing.append(f"wan-import ({wan_err})")
 
     # --- optional: AudioCraft (sound stage) ---
     if not _have("audiocraft"):

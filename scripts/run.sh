@@ -31,6 +31,17 @@ if [ "${1:-}" = "--auth-only-local" ]; then
   echo "==> local-only mode (no public link). Use an SSH tunnel to reach it."
 fi
 
+# --- guard WAN's optional-model imports (every launch; instant + idempotent) --
+# WAN's wan/__init__.py eagerly imports i2v/s2v/ti2v/animate, several of which
+# need heavy deps (decord/peft/...) that aren't in its requirements.txt. We only
+# use t2v, so we wrap those imports in try/except so a missing optional dep can
+# never break the render. Done here too (not just in setup) so it applies even
+# when the setup sentinel would otherwise skip a reinstall.
+WAN_INIT="${STUDIO_MODELS_DIR:-$ROOT/models}/Wan2.2/wan/__init__.py"
+if [ -f "$WAN_INIT" ]; then
+  "$PYBIN" "$ROOT/scripts/patch_wan.py" "$WAN_INIT" || true
+fi
+
 # --- self-healing preflight -----------------------------------------------
 # preflight exit codes: 0 = all present -> launch; 1 = CORE missing -> setup;
 # 2 = only OPTIONAL missing (e.g. audiocraft) -> setup once (sentinel), else
