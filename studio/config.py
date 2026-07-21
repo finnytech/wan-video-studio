@@ -76,14 +76,21 @@ RESOLUTION_MAP = {
     "480p": "832*480",
     "720p": "1280*720",
 }
+# 720p is the realism sweet spot for T2V-A14B and fits easily in 96 GB.
 DEFAULT_RESOLUTION = os.environ.get("STUDIO_DEFAULT_RES", "720p")
 
-# Sampling. Official default is 40-50 steps; fewer = faster. On the RTX PRO 6000
-# 30 steps is a good speed/quality balance for T2V-A14B.
-DEFAULT_STEPS = _int("WAN_SAMPLE_STEPS", 30)
+# Sampling. Official default is 40-50 steps. On the RTX PRO 6000 the 96 GB budget
+# lets us run high step counts at full precision -> we default to 40 for maximum
+# realism/detail (film-action look). Drop to 30 for faster drafts.
+DEFAULT_STEPS = _int("WAN_SAMPLE_STEPS", 40)
+# sample_shift shapes the noise schedule; 5.0 is WAN's filmic default. Guidance 5.0
+# keeps strong prompt adherence without the over-sharpened/plastic look.
 SAMPLE_SHIFT = _float("WAN_SAMPLE_SHIFT", 5.0)
 SAMPLE_GUIDE_SCALE = _float("WAN_GUIDE_SCALE", 5.0)
 SAMPLE_SOLVER = os.environ.get("WAN_SAMPLE_SOLVER", "unipc")
+
+# Cinematic prompt enhancement (photoreal / film-action). See prompt_enhance.py.
+ENHANCE_PROMPT = _flag("STUDIO_ENHANCE", True)
 
 
 # --- Speed / VRAM (RTX PRO 6000, 96 GB) ------------------------------------
@@ -108,6 +115,9 @@ MUSICGEN_MODEL = os.environ.get("MUSICGEN_MODEL", "facebook/musicgen-large")
 DEFAULT_AUDIO_MODE = os.environ.get("STUDIO_AUDIO_MODE", "sfx")
 # When mixing both, music sits under the SFX by this gain (dB).
 MUSIC_UNDER_DB = _float("STUDIO_MUSIC_UNDER_DB", -8.0)
+# Classifier-free guidance for AudioCraft: higher = stronger prompt adherence,
+# crisper/more realistic sound. 3.0 is the sweet spot.
+AUDIO_CFG_COEF = _float("STUDIO_AUDIO_CFG", 3.0)
 AUDIO_TIMEOUT = _int("STUDIO_AUDIO_TIMEOUT", 900)
 
 

@@ -17,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from . import config, runner
+from . import config, prompt_enhance, runner
 
 
 def _log(msg: str) -> None:
@@ -50,6 +50,12 @@ class VideoGenerator:
         from .models import ensure_video
 
         code_dir, weights_dir = ensure_video()
+
+        if config.ENHANCE_PROMPT:
+            enhanced = prompt_enhance.enhance(prompt)
+            if enhanced != prompt:
+                _log("cinematic enhancement applied")
+            prompt = enhanced
 
         resolution = resolution if resolution in config.RESOLUTION_MAP else config.DEFAULT_RESOLUTION
         size = config.RESOLUTION_MAP[resolution]

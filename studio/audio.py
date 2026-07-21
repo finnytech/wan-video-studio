@@ -63,6 +63,7 @@ def add_sound(
         "--audiogen_model", config.AUDIOGEN_MODEL,
         "--musicgen_model", config.MUSICGEN_MODEL,
         "--music_under_db", str(config.MUSIC_UNDER_DB),
+        "--cfg_coef", str(config.AUDIO_CFG_COEF),
     ]
     if music_prompt:
         cmd += ["--music_prompt", music_prompt]

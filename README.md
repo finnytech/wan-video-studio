@@ -62,7 +62,9 @@ prompt ─► AudioCraft: AudioGen (SFX) + MusicGen (music), exact video length 
 |---------|-----|
 | **No offload** (`WAN_OFFLOAD_MODEL=0`) | 96 GB fits the full 14B model → no CPU↔GPU streaming, max speed |
 | **T5 on GPU** (`WAN_T5_CPU=0`) | text encoder stays resident |
-| **30 sample steps** (default) | good speed/quality balance for T2V-A14B; lower = faster |
+| **40 sample steps** (default) | max realism/detail at full precision; drop to 30 for faster drafts |
+| **Cinematic enhancement** (`STUDIO_ENHANCE=1`) | auto film-look descriptors (ARRI/35mm/photoreal/real physics) for the film-action look |
+| **Audio CFG 3.0** (`STUDIO_AUDIO_CFG`) | stronger prompt adherence → crisper, more realistic SFX/music |
 | **TF32 + cuDNN autotune** | free throughput on Blackwell, no quality loss |
 | **48-vCPU threading** | VAE/data work parallelized (`STUDIO_CPU_THREADS=40`) |
 | **FlashAttention** | installed best-effort for a big attention speedup |

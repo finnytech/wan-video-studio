@@ -37,8 +37,12 @@ def _gen_audiogen(prompt: str, duration: float):
     from audiocraft.models import AudioGen
 
     model = AudioGen.get_pretrained(_AUDIOGEN)
-    model.set_generation_params(duration=max(1.0, duration))
-    _log(f"AudioGen: '{prompt}' ({duration:.1f}s)")
+    # Higher cfg_coef -> stronger prompt adherence (crisper, more realistic SFX).
+    model.set_generation_params(
+        duration=max(1.0, duration),
+        top_k=250, top_p=0.0, temperature=1.0, cfg_coef=int(_CFG),
+    )
+    _log(f"AudioGen: '{prompt}' ({duration:.1f}s, cfg={_CFG})")
     wav = model.generate([prompt])[0].detach().cpu()  # (channels, samples)
     sr = model.sample_rate
     del model
@@ -52,8 +56,11 @@ def _gen_musicgen(prompt: str, duration: float):
     from audiocraft.models import MusicGen
 
     model = MusicGen.get_pretrained(_MUSICGEN)
-    model.set_generation_params(duration=max(1.0, duration))
-    _log(f"MusicGen: '{prompt}' ({duration:.1f}s)")
+    model.set_generation_params(
+        duration=max(1.0, duration),
+        top_k=250, top_p=0.0, temperature=1.0, cfg_coef=int(_CFG),
+    )
+    _log(f"MusicGen: '{prompt}' ({duration:.1f}s, cfg={_CFG})")
     wav = model.generate([prompt])[0].detach().cpu()
     sr = model.sample_rate
     del model
@@ -92,7 +99,7 @@ def _fit_len(wav, samples: int):
 
 
 def main() -> int:
-    global _AUDIOGEN, _MUSICGEN
+    global _AUDIOGEN, _MUSICGEN, _CFG
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", choices=["sfx", "music", "both"], default="sfx")
     ap.add_argument("--prompt", required=True)
@@ -102,10 +109,12 @@ def main() -> int:
     ap.add_argument("--audiogen_model", default="facebook/audiogen-medium")
     ap.add_argument("--musicgen_model", default="facebook/musicgen-large")
     ap.add_argument("--music_under_db", type=float, default=-8.0)
+    ap.add_argument("--cfg_coef", type=float, default=3.0)
     args = ap.parse_args()
 
     _AUDIOGEN = args.audiogen_model
     _MUSICGEN = args.musicgen_model
+    _CFG = args.cfg_coef
     _load_tf32()
 
     import torch
