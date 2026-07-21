@@ -1,8 +1,8 @@
 """Model presence checks + downloads.
 
 Video = WAN 2.2 official code (generate.py) + T2V-A14B weights from HF.
-Sound = Meta AudioCraft (pip package); AudioGen/MusicGen weights auto-download
-        on first use via get_pretrained(), cached under HF cache.
+Sound = Stable Audio Open via diffusers StableAudioPipeline; weights auto-download
+        on first use (gated: needs HF_TOKEN + accepted license), cached under HF cache.
 
 Idempotent: nothing is re-downloaded if it's already on disk.
 """
@@ -84,13 +84,14 @@ def ensure_video() -> tuple[Path, Path]:
 
 
 def ensure_audio() -> None:
-    """Verify AudioCraft is importable. Model weights lazy-download on first use."""
+    """Verify the Stable Audio Open pipeline is importable. Weights lazy-download
+    on first use (gated model -> needs HF_TOKEN + accepted license)."""
     try:
-        import audiocraft  # noqa: F401
+        from diffusers import StableAudioPipeline  # noqa: F401
 
-        _log("audiocraft present ✓ (AudioGen/MusicGen weights auto-download on first run)")
-    except Exception:  # noqa: BLE001
-        _log("⚠️  audiocraft not importable — install via setup.sh (pip install audiocraft)")
+        _log("Stable Audio Open pipeline OK ✓ (weights auto-download on first run)")
+    except Exception as e:  # noqa: BLE001
+        _log(f"⚠️  StableAudioPipeline unavailable ({e}) — run setup.sh; video still works")
 
 
 def ensure_all() -> None:

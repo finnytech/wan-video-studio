@@ -44,7 +44,7 @@ fi
 
 # --- self-healing preflight -----------------------------------------------
 # preflight exit codes: 0 = all present -> launch; 1 = CORE missing -> setup;
-# 2 = only OPTIONAL missing (e.g. audiocraft) -> setup once (sentinel), else
+# 2 = only OPTIONAL missing (e.g. sound stack) -> setup once (sentinel), else
 # launch anyway so a stubborn optional build can't block the app forever.
 PF_RC=0
 "$PYBIN" "$ROOT/scripts/preflight.py" || PF_RC=$?

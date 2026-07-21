@@ -1,7 +1,7 @@
-# 🎬 WAN Video Studio — WAN 2.2 video + AudioCraft sound, one click
+# 🎬 WAN Video Studio — WAN 2.2 video + Stable Audio Open sound, one click
 
-Text → **WAN 2.2 (T2V-A14B, 14B)** video (5–10 s) → **AudioCraft** sound
-(**AudioGen** SFX + **MusicGen** music) matched to the timeline → muxed MP4 with a
+Text → **WAN 2.2 (T2V-A14B, 14B)** video (5–10 s) → **Stable Audio Open** sound
+(SFX + music) matched to the timeline → muxed MP4 with a
 **download button** in a web UI, behind a **one-time OAuth-style token** so bots
 can't spam the endpoint and burn your GPU hours.
 
@@ -12,8 +12,8 @@ resident for maximum speed.
 > Sister project of [`hunyuan-video-studio`](https://github.com/finnytech/hunyuan-video-studio)
 > (HunyuanVideo 1.5 + HunyuanVideo-Foley on A100). Same architecture, different stack.
 
-> **Real, not a toy.** Video drives WAN's **official `generate.py`**; sound drives Meta's
-> **AudioCraft** (`AudioGen`/`MusicGen`). Every flag is a real, tested upstream option.
+> **Real, not a toy.** Video drives WAN's **official `generate.py`**; sound drives Stability AI's
+> **Stable Audio Open** (diffusers `StableAudioPipeline`). Every flag is a real, tested upstream option.
 
 ---
 
@@ -23,9 +23,14 @@ resident for maximum speed.
 git clone https://github.com/finnytech/wan-video-studio.git
 cd wan-video-studio
 export HF_TOKEN=***           # for HuggingFace weight downloads (avoids throttling)
-bash scripts/setup.sh            # clones WAN 2.2, downloads weights, installs AudioCraft
+bash scripts/setup.sh            # clones WAN 2.2, downloads weights, installs Stable Audio Open
 bash scripts/run.sh              # prints your PRIVATE share URL + access token
 ```
+
+> **Sound is a gated model.** Stable Audio Open needs a one-time license accept on
+> your HF account (the same one behind `HF_TOKEN`):
+> https://huggingface.co/stabilityai/stable-audio-open-1.0 —
+> without it, video still works and audio just stays off.
 
 `run.sh` prints your `https://<random>.gradio.live` link **plus** an access token —
 paste the token as the password on the login screen (username can be anything).
@@ -39,7 +44,7 @@ prompt ─► WAN 2.2 T2V-A14B (official generate.py) ─► silent .mp4  (saved
                                                          │
                             generate.py exits ─► GPU VRAM fully released
                                                          ▼
-prompt ─► AudioCraft: AudioGen (SFX) + MusicGen (music), exact video length ─► sound.wav
+prompt ─► Stable Audio Open (SFX + music), exact video length ─► sound.wav
                                                          ▼
                               ffmpeg mux + normalize ─► download.mp4 (H.264+AAC, faststart)
 ```
@@ -47,14 +52,15 @@ prompt ─► AudioCraft: AudioGen (SFX) + MusicGen (music), exact video length 
 - **Length**: **5–10 s** (81–161 frames at 16 fps). WAN 2.2 stays coherent in this
   range; past ~10 s motion drifts / loops, so the slider is capped at 10 s.
 - **Resolution**: 480p (`832×480`) / 720p (`1280×720`) — T2V-A14B's native sizes.
-- **Sound modes**:
-  - `sfx` → AudioGen environmental sound effects
-  - `music` → MusicGen music bed
-  - `both` → AudioGen SFX over an attenuated MusicGen bed (mixed, length-matched)
+- **Sound modes** (all one model — Stable Audio Open does SFX *and* music):
+  - `sfx` → environmental sound effects / ambience of the scene
+  - `music` → a cinematic music score / bed
+  - `both` → SFX over an attenuated music bed (two passes, mixed, length-matched)
 
-  AudioGen/MusicGen are **text-conditioned** (not video-conditioned), so audio is
+  Stable Audio Open is **text-conditioned** (not video-conditioned), so audio is
   generated from the prompt at the exact clip duration and aligned to the timeline
-  by muxing at t=0 with length == video length.
+  by muxing at t=0 with length == video length. The video prompt is auto-reshaped
+  into an audio prompt so effects actually match the scene.
 
 ## 2. Speed / optimization (RTX PRO 6000, 96 GB)
 
@@ -64,7 +70,7 @@ prompt ─► AudioCraft: AudioGen (SFX) + MusicGen (music), exact video length 
 | **T5 on GPU** (`WAN_T5_CPU=0`) | text encoder stays resident |
 | **40 sample steps** (default) | max realism/detail at full precision; drop to 30 for faster drafts |
 | **Cinematic enhancement** (`STUDIO_ENHANCE=1`) | auto film-look descriptors (ARRI/35mm/photoreal/real physics) for the film-action look |
-| **Audio CFG 3.0** (`STUDIO_AUDIO_CFG`) | stronger prompt adherence → crisper, more realistic SFX/music |
+| **Audio guidance 7.0** (`STUDIO_AUDIO_GUIDANCE`) + **100 steps** (`STUDIO_AUDIO_STEPS`) | stronger prompt adherence → crisper, more realistic SFX/music |
 | **TF32 + cuDNN autotune** | free throughput on Blackwell, no quality loss |
 | **48-vCPU threading** | VAE/data work parallelized (`STUDIO_CPU_THREADS=40`) |
 | **FlashAttention** | installed best-effort for a big attention speedup |
@@ -96,13 +102,13 @@ bash scripts/reset_weights.sh   # wipe + re-fetch from the new repo
 ## 5. Files
 
 ```
-scripts/setup.sh        installer: env, torch, WAN 2.2, weights, AudioCraft (idempotent)
+scripts/setup.sh        installer: env, torch, WAN 2.2, weights, Stable Audio Open (idempotent)
 scripts/run.sh          launches the UI + prints the private link & token
 scripts/reset_weights.sh wipe + re-download WAN weights (e.g. to switch checkpoints)
 studio/config.py        all knobs: repos, weights, resolutions, speed flags, audio modes
-studio/models.py        clone WAN + download weights; verify AudioCraft
+studio/models.py        clone WAN + download weights; verify Stable Audio Open
 studio/video.py         WAN 2.2 driver (official generate.py)
-studio/audio_worker.py  standalone AudioGen/MusicGen generator (own process)
+studio/audio_worker.py  standalone Stable Audio Open generator (own process)
 studio/audio.py         audio stage wrapper + timeline mux
 studio/mux.py           ffmpeg mux + browser-friendly normalize
 studio/runner.py        shared subprocess runner (timeout / retry / logs / TF32 env)
@@ -113,4 +119,4 @@ studio/app.py           Gradio UI (prompt / length / resolution / sound → vide
 ## 6. Requirements
 
 RTX PRO 6000 / 80–96 GB-class GPU, CUDA 12.4, Python 3.10+, Linux, ffmpeg, git-lfs.
-`setup.sh` handles the env, torch, WAN 2.2 + weights, and AudioCraft.
+`setup.sh` handles the env, torch, WAN 2.2 + weights, and Stable Audio Open.

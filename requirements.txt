@@ -1,4 +1,4 @@
-# Studio UI + orchestration. Heavy ML deps (torch, WAN's requirements, audiocraft)
+# Studio UI + orchestration. Heavy ML deps (torch, WAN's requirements, diffusers)
 # are installed by setup.sh so we don't fight upstream version pins here.
 gradio>=4.44.0
 huggingface_hub>=0.26.0
@@ -10,3 +10,8 @@ numpy>=1.26.0
 # only pulls it in transitively via flash_attn; since flash_attn is optional and
 # often won't build, we install einops explicitly so the video model always imports.
 einops>=0.7.0
+# Sound stage = Stable Audio Open (diffusers StableAudioPipeline). soundfile
+# writes the WAV; sentencepiece is the T5 tokenizer's backend. diffusers itself
+# comes in via WAN's requirements (setup.sh ensures it's >=0.29 for StableAudio).
+soundfile>=0.12.1
+sentencepiece>=0.1.99

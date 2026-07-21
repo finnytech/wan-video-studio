@@ -1,6 +1,6 @@
 """Central configuration for WAN Video Studio.
 
-Text -> WAN 2.2 (T2V-A14B) video -> AudioCraft (AudioGen SFX + MusicGen music) sound
+Text -> WAN 2.2 (T2V-A14B) video -> Stable Audio Open (SFX + music) sound
 -> muxed MP4 with a download button, behind a one-time token gate.
 
 Tuned for a single RTX PRO 6000 (Blackwell, 96 GB VRAM, 48 vCPU, ~500 TFLOPS).
@@ -106,18 +106,25 @@ CPU_THREADS = _int("STUDIO_CPU_THREADS", 40)
 USE_PROMPT_EXTEND = _flag("WAN_PROMPT_EXTEND", False)
 
 
-# --- AudioCraft (sound) ----------------------------------------------------
-# AudioGen = text->sound-effects; MusicGen = text->music. Both generate audio of
-# the video's exact duration, which we then mux onto the timeline.
-AUDIOGEN_MODEL = os.environ.get("AUDIOGEN_MODEL", "facebook/audiogen-medium")
-MUSICGEN_MODEL = os.environ.get("MUSICGEN_MODEL", "facebook/musicgen-large")
-# Default sound mode: "sfx" (AudioGen), "music" (MusicGen), or "both" (mixed).
+# --- Stable Audio Open (sound) ---------------------------------------------
+# ONE diffusers pipeline (StableAudioPipeline) turns TEXT into SFX *and* music,
+# stereo 44.1 kHz, up to 47 s. We generate audio of the video's exact length and
+# mux it onto the timeline. No torch-version conflicts (unlike audiocraft).
+# GATED model: accept the license once + set HF_TOKEN.
+#   https://huggingface.co/stabilityai/stable-audio-open-1.0
+AUDIO_MODEL = os.environ.get("AUDIO_MODEL", "stabilityai/stable-audio-open-1.0")
+# Default sound mode: "sfx" (effects/ambience), "music" (score), "both" (mixed).
 DEFAULT_AUDIO_MODE = os.environ.get("STUDIO_AUDIO_MODE", "sfx")
-# When mixing both, music sits under the SFX by this gain (dB).
+# Diffusion steps: higher = better/slower. 100 is a solid default for 5-10 s.
+AUDIO_STEPS = _int("STUDIO_AUDIO_STEPS", 100)
+# Guidance scale: prompt adherence. 7.0 is Stable Audio's sweet spot.
+AUDIO_GUIDANCE = _float("STUDIO_AUDIO_GUIDANCE", 7.0)
+# Negative prompt markedly improves quality (per Stable Audio docs).
+AUDIO_NEG_PROMPT = os.environ.get(
+    "STUDIO_AUDIO_NEG", "low quality, average quality, distorted, harsh noise, clipping"
+)
+# When mixing "both", the music sits under the SFX by this gain (dB).
 MUSIC_UNDER_DB = _float("STUDIO_MUSIC_UNDER_DB", -8.0)
-# Classifier-free guidance for AudioCraft: higher = stronger prompt adherence,
-# crisper/more realistic sound. 3.0 is the sweet spot.
-AUDIO_CFG_COEF = _float("STUDIO_AUDIO_CFG", 3.0)
 AUDIO_TIMEOUT = _int("STUDIO_AUDIO_TIMEOUT", 900)
 
 

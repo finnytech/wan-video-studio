@@ -20,20 +20,16 @@ if [ -n "${STUDIO_NO_VENV:-}" ] || [ -d /teamspace/studios ] || [ -n "${CONDA_PR
 fi
 
 # --- 1. system deps -------------------------------------------------------
-# ffmpeg binary (mux) + git-lfs + ffmpeg DEV headers & pkg-config. The dev
-# headers are required to build PyAV (av==11.0.0), a hard dep of audiocraft;
-# without them the audiocraft wheel build fails with "libavdevice not found".
+# ffmpeg binary (mux + ffprobe) + git-lfs (weights). Stable Audio Open is a pure
+# wheel install (no PyAV source build), so the old ffmpeg -dev headers are gone.
 APT_PKGS=""
 command -v ffmpeg   >/dev/null 2>&1 || APT_PKGS="$APT_PKGS ffmpeg"
 command -v git-lfs  >/dev/null 2>&1 || APT_PKGS="$APT_PKGS git-lfs"
-command -v pkg-config >/dev/null 2>&1 || APT_PKGS="$APT_PKGS pkg-config"
-# Always ensure the -dev headers (cheap if already installed).
-APT_PKGS="$APT_PKGS libavformat-dev libavcodec-dev libavdevice-dev libavutil-dev libavfilter-dev libswscale-dev libswresample-dev"
 if [ -n "$APT_PKGS" ]; then
   echo "==> installing system deps:$APT_PKGS"
   # shellcheck disable=SC2086
   (sudo apt-get update -y && sudo apt-get install -y $APT_PKGS) \
-    || echo "!! apt-get failed for some packages; audiocraft build may fail (video still works)"
+    || echo "!! apt-get failed for some packages (video still works if ffmpeg present)"
 fi
 command -v git-lfs >/dev/null 2>&1 && git lfs install || true
 
@@ -126,30 +122,19 @@ PY
   done
 fi
 
-# --- 7. AudioCraft (Meta AudioGen + MusicGen) -----------------------------
-# Optional sound stage. Video always works without it.
-#
-# WHY --no-deps + a pinned version: audiocraft's loose pins make pip BACKTRACK
-# from 1.3.0 down to 1.1.0, which requires spacy==3.5.2 — a version with NO
-# cp312 wheel that then fails to compile (thinc / Cython<3 vs modern NumPy).
-# Pinning 1.3.0 + --no-deps sidesteps that entirely; we then install only the
-# runtime deps AudioGen/MusicGen actually need, all of which ship cp312 wheels
-# (no source builds, no compile hell).
-if "$PYBIN" -c "import audiocraft" 2>/dev/null; then
-  echo "==> AudioCraft already present ✓"
+# --- 7. Stable Audio Open (sound stage) -----------------------------------
+# Text->audio (SFX + music) via diffusers StableAudioPipeline. Clean wheel-only
+# install: recent diffusers + soundfile + sentencepiece. NO torch-version pin
+# conflicts -- this is exactly why we dropped audiocraft, which hard-pinned
+# torch 2.1 + the discontinued torchtext and could never coexist with torch 2.8.
+# Video always works without this.
+echo "==> ensuring Stable Audio Open deps (diffusers + soundfile + sentencepiece)"
+PIP install "diffusers>=0.29.0" soundfile sentencepiece \
+  || echo "!! stable-audio deps failed (sound stage may be off; video still works)"
+if "$PYBIN" -c "from diffusers import StableAudioPipeline" 2>/dev/null; then
+  echo "   StableAudioPipeline import OK ✓"
 else
-  echo "==> installing AudioCraft (pinned 1.3.0, --no-deps + wheel-only runtime deps)"
-  if PIP install "audiocraft==1.3.0" --no-deps; then
-    PIP install \
-      "av>=12.0.0" einops encodec julius num2words omegaconf \
-      "hydra-core>=1.1" hydra_colorlog "spacy>=3.7,<3.9" sentencepiece flashy \
-      librosa soundfile torchmetrics \
-      || echo "!! some audiocraft runtime deps failed (sound stage may be off)"
-  else
-    echo "!! audiocraft install failed (video still works; sound stage disabled)"
-  fi
-  "$PYBIN" -c "import audiocraft; print('   audiocraft import OK ✓')" 2>/dev/null \
-    || echo "   audiocraft not importable yet — video still works, audio off"
+  echo "   StableAudioPipeline not importable yet — video still works, audio off"
 fi
 
 # --- 8. speed kernels (best-effort; failures never block) -----------------

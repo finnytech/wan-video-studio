@@ -10,7 +10,7 @@ Driven as a subprocess so every flag is real and tested upstream:
 
 Frame count is clamped to WAN's 4n+1 rule and to 5-10 s (81-161 frames at 16 fps),
 the coherent range for WAN 2.2. Each render is its own process, so its VRAM is
-fully reclaimed by the OS before the AudioCraft stage runs — no contention.
+fully reclaimed by the OS before the Stable Audio stage runs — no contention.
 """
 from __future__ import annotations
 

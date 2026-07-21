@@ -3,12 +3,13 @@
 Exit codes:
   0  -> everything present (core + optional); launch directly.
   1  -> something CORE is missing; caller must run setup.sh.
-  2  -> core OK but an OPTIONAL piece is missing (e.g. audiocraft); caller may
-        run setup once, but can also launch (video works, audio may be off).
+  2  -> core OK but an OPTIONAL piece is missing (e.g. the sound stack); caller
+        may run setup once, but can also launch (video works, audio may be off).
 
 "Core" = python deps to import the app + WAN code + WAN weights.
-AudioCraft is treated as OPTIONAL: the video pipeline runs without it, so a
-missing audio stack only prints a warning (it never forces a full reinstall).
+The Stable Audio Open sound stack (diffusers + soundfile) is OPTIONAL: the video
+pipeline runs without it, so a missing audio stack only prints a warning (it
+never forces a full reinstall).
 
 Run:  python scripts/preflight.py            # core check
       python scripts/preflight.py --verbose  # list every component
@@ -107,9 +108,12 @@ def main() -> int:
         if wan_err:
             core_missing.append(f"wan-import ({wan_err})")
 
-    # --- optional: AudioCraft (sound stage) ---
-    if not _have("audiocraft"):
-        optional_missing.append("audiocraft (sound stage)")
+    # --- optional: Stable Audio Open sound stack ---
+    # The worker runs in a subprocess, so these aren't needed in the app process;
+    # missing them only means the sound stage is off (video still works).
+    for _m in ("diffusers", "soundfile"):
+        if not _have(_m):
+            optional_missing.append(f"{_m} (sound stage)")
 
     # --- optional: ffmpeg binary (mux) ---
     import shutil

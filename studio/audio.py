@@ -1,11 +1,11 @@
-"""AudioCraft stage — generate sound of the video's exact length, then mux it
-onto the timeline.
+"""Stable Audio Open stage — generate sound of the video's exact length, then
+mux it onto the timeline.
 
 Runs AFTER the video process has exited (clean GPU). Uses the standalone
 audio_worker as a subprocess (timeout + logs + retry via the shared runner), so
 all audio-model VRAM is freed on exit too.
 
-Note: AudioGen/MusicGen are text-conditioned (not video-conditioned like a foley
+Note: Stable Audio Open is text-conditioned (not video-conditioned like a foley
 model), so the audio is generated to match the PROMPT and the exact DURATION, then
 aligned to the timeline by muxing at t=0 with length == video length.
 """
@@ -22,13 +22,38 @@ def _log(msg: str) -> None:
     print(f"[audio] {msg}", flush=True)
 
 
+# --- prompt shaping --------------------------------------------------------
+# Stable Audio responds best to descriptive, quality-tagged prompts. We turn the
+# VIDEO prompt into an audio-oriented one so effects/ambience actually match the
+# scene instead of sounding generic.
+_SFX_TMPL = (
+    "High quality, realistic ambient sound and detailed sound effects of {p}. "
+    "Immersive field recording, natural, clear stereo, no music, no speech."
+)
+_MUSIC_TMPL = (
+    "High quality cinematic ambient score for a scene of {p}. "
+    "Warm, atmospheric, emotional film soundtrack, instrumental, no vocals."
+)
+
+
+def _shape_prompts(video_prompt: str, mode: str, music_prompt: Optional[str]):
+    """Return (sfx_prompt, music_prompt) tuned for Stable Audio Open."""
+    p = video_prompt.strip().rstrip(".")
+    sfx = _SFX_TMPL.format(p=p)
+    if music_prompt and music_prompt.strip():
+        music = f"High quality, {music_prompt.strip()}"
+    else:
+        music = _MUSIC_TMPL.format(p=p)
+    return sfx, music
+
+
 def _probe_duration(path: Path) -> float:
     import shutil
     import subprocess
 
     ff = shutil.which("ffprobe")
     if not ff:
-        return config.DEFAULT_SECONDS
+        return float(config.DEFAULT_SECONDS)
     out = subprocess.run(
         [ff, "-i", str(path), "-show_entries", "format=duration",
          "-v", "quiet", "-of", "csv=p=0"],
@@ -37,7 +62,7 @@ def _probe_duration(path: Path) -> float:
     try:
         return float(out.stdout.strip())
     except (TypeError, ValueError):
-        return config.DEFAULT_SECONDS
+        return float(config.DEFAULT_SECONDS)
 
 
 def add_sound(
@@ -53,22 +78,23 @@ def add_sound(
 
     duration = _probe_duration(video_in)
     wav_path = out_dir / "sound.wav"
+    sfx_prompt, music_p = _shape_prompts(prompt, mode, music_prompt)
 
     cmd = [
         sys.executable, "-m", "studio.audio_worker",
         "--mode", mode,
-        "--prompt", prompt,
+        "--prompt", sfx_prompt,
+        "--music_prompt", music_p,
         "--duration", f"{duration:.3f}",
         "--out", str(wav_path),
-        "--audiogen_model", config.AUDIOGEN_MODEL,
-        "--musicgen_model", config.MUSICGEN_MODEL,
+        "--model", config.AUDIO_MODEL,
+        "--steps", str(config.AUDIO_STEPS),
+        "--guidance", str(config.AUDIO_GUIDANCE),
+        "--negative", config.AUDIO_NEG_PROMPT,
         "--music_under_db", str(config.MUSIC_UNDER_DB),
-        "--cfg_coef", str(config.AUDIO_CFG_COEF),
     ]
-    if music_prompt:
-        cmd += ["--music_prompt", music_prompt]
 
-    _log(f"generating {mode} audio for {duration:.2f}s")
+    _log(f"generating {mode} audio for {duration:.2f}s (Stable Audio Open)")
     runner.run(
         cmd, cwd=config.ROOT, stage="audio",
         timeout=config.AUDIO_TIMEOUT, retries=config.STAGE_RETRIES,

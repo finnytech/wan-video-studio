@@ -3,8 +3,8 @@
 Order of operations:
   1. WAN 2.2 renders the video (own process; full 96 GB to the video model).
   2. That process EXITS -> its VRAM is fully released. Silent video saved locally.
-  3. AudioCraft (AudioGen SFX and/or MusicGen music) generates audio of the exact
-     video length, muxed onto the timeline.
+  3. Stable Audio Open generates sound (SFX and/or music) of the exact video
+     length, muxed onto the timeline.
   4. Only once BOTH video and sound are done is the finished MP4 revealed and the
      download button shown. Nothing is streamed to the web mid-render.
 
@@ -65,7 +65,7 @@ def generate(prompt, seconds, resolution, steps, seed, audio_mode, music_prompt)
         yield _busy(f"🧹 Stage 2/3 — video done in {t_video:.0f}s, freeing VRAM…")
         _VIDEO.unload()
 
-        yield _busy(f"🔊 Stage 3/3 — generating {audio_mode} sound (AudioCraft)…")
+        yield _busy(f"🔊 Stage 3/3 — generating {audio_mode} sound (Stable Audio Open)…")
         with_sound = audio.add_sound(
             silent, prompt, mode=audio_mode,
             music_prompt=(music_prompt or "").strip() or None,
@@ -96,8 +96,8 @@ def build_ui() -> gr.Blocks:
     with gr.Blocks(title="WAN Video Studio") as demo:
         gr.Markdown(
             "# 🎬 WAN Video Studio\n"
-            "Text → **WAN 2.2 (14B)** video → **AudioCraft** sound (AudioGen SFX + "
-            "MusicGen music). Tuned for RTX PRO 6000 · 96 GB. "
+            "Text → **WAN 2.2 (14B)** video → **Stable Audio Open** sound (SFX + "
+            "music). Tuned for RTX PRO 6000 · 96 GB. "
             "_The video appears only once both video and sound are finished._"
         )
         with gr.Row():
@@ -121,7 +121,7 @@ def build_ui() -> gr.Blocks:
                 with gr.Row():
                     audio_mode = gr.Radio(
                         ["sfx", "music", "both"], value=config.DEFAULT_AUDIO_MODE,
-                        label="Sound (AudioGen=sfx · MusicGen=music · both=mixed)",
+                        label="Sound (sfx=effects/ambience · music=score · both=mixed)",
                     )
                     music_prompt = gr.Textbox(
                         label="Music prompt (optional; for music/both)",
