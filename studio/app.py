@@ -159,7 +159,8 @@ def main() -> None:
     print("  Username can be anything.")
     print("=" * 62 + "\n", flush=True)
 
-    demo.launch(
+    _safe_launch(
+        demo,
         server_name=config.SERVER_NAME,
         server_port=config.SERVER_PORT,
         share=config.PUBLIC_SHARE,
@@ -168,6 +169,24 @@ def main() -> None:
         show_api=False,
         max_threads=config.MAX_CONCURRENCY + 2,
     )
+
+
+def _safe_launch(demo, **kwargs) -> None:
+    """Launch across Gradio versions: drop kwargs the installed version dropped
+    (e.g. Gradio 6 removed `show_api`) instead of crashing."""
+    import inspect
+
+    try:
+        params = inspect.signature(demo.launch).parameters
+        if not any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+            dropped = [k for k in kwargs if k not in params]
+            for k in dropped:
+                kwargs.pop(k)
+            if dropped:
+                print(f"[app] gradio: dropping unsupported launch args {dropped}", flush=True)
+    except (TypeError, ValueError):
+        pass
+    demo.launch(**kwargs)
 
 
 if __name__ == "__main__":

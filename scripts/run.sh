@@ -31,5 +31,25 @@ if [ "${1:-}" = "--auth-only-local" ]; then
   echo "==> local-only mode (no public link). Use an SSH tunnel to reach it."
 fi
 
+# --- self-healing preflight -----------------------------------------------
+# preflight exit codes: 0 = all present -> launch; 1 = CORE missing -> setup;
+# 2 = only OPTIONAL missing (e.g. audiocraft) -> setup once (sentinel), else
+# launch anyway so a stubborn optional build can't block the app forever.
+PF_RC=0
+"$PYBIN" "$ROOT/scripts/preflight.py" || PF_RC=$?
+if [ "${STUDIO_NO_AUTOSETUP:-0}" = "1" ]; then
+  [ "$PF_RC" != "0" ] && echo "!! missing pieces but STUDIO_NO_AUTOSETUP=1 -> skipping. Run: bash scripts/setup.sh"
+elif [ "$PF_RC" = "1" ]; then
+  echo "==> core pieces missing -> running setup (installs only what's missing)"
+  bash "$ROOT/scripts/setup.sh"
+elif [ "$PF_RC" = "2" ]; then
+  if [ ! -f "$ROOT/.setup-complete" ]; then
+    echo "==> optional pieces missing (first run) -> running setup once"
+    bash "$ROOT/scripts/setup.sh"
+  else
+    echo "==> optional pieces missing but setup already ran -> launching anyway (audio may be off)"
+  fi
+fi
+
 echo "==> launching WAN Video Studio (env: $STUDIO_ENV_KIND; watch for link + token below)"
 exec "$PYBIN" -m studio.app

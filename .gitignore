@@ -17,3 +17,6 @@ outputs/
 
 # env
 .env
+
+# setup sentinel
+.setup-complete

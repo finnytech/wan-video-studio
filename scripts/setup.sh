@@ -20,10 +20,20 @@ if [ -n "${STUDIO_NO_VENV:-}" ] || [ -d /teamspace/studios ] || [ -n "${CONDA_PR
 fi
 
 # --- 1. system deps -------------------------------------------------------
-if ! command -v ffmpeg >/dev/null 2>&1; then
-  echo "==> installing ffmpeg + git-lfs"
-  (sudo apt-get update -y && sudo apt-get install -y ffmpeg git-lfs) \
-    || echo "!! could not apt-get ffmpeg; ensure it's available"
+# ffmpeg binary (mux) + git-lfs + ffmpeg DEV headers & pkg-config. The dev
+# headers are required to build PyAV (av==11.0.0), a hard dep of audiocraft;
+# without them the audiocraft wheel build fails with "libavdevice not found".
+APT_PKGS=""
+command -v ffmpeg   >/dev/null 2>&1 || APT_PKGS="$APT_PKGS ffmpeg"
+command -v git-lfs  >/dev/null 2>&1 || APT_PKGS="$APT_PKGS git-lfs"
+command -v pkg-config >/dev/null 2>&1 || APT_PKGS="$APT_PKGS pkg-config"
+# Always ensure the -dev headers (cheap if already installed).
+APT_PKGS="$APT_PKGS libavformat-dev libavcodec-dev libavdevice-dev libavutil-dev libavfilter-dev libswscale-dev libswresample-dev"
+if [ -n "$APT_PKGS" ]; then
+  echo "==> installing system deps:$APT_PKGS"
+  # shellcheck disable=SC2086
+  (sudo apt-get update -y && sudo apt-get install -y $APT_PKGS) \
+    || echo "!! apt-get failed for some packages; audiocraft build may fail (video still works)"
 fi
 command -v git-lfs >/dev/null 2>&1 && git lfs install || true
 
@@ -59,18 +69,42 @@ echo "==> ensuring WAN 2.2 code + weights"
 "$PYBIN" -m studio.models || true
 
 # --- 6. install WAN's own requirements ------------------------------------
+# IMPORTANT: WAN's requirements.txt pins flash_attn, which builds from source and
+# needs torch already importable in the build env. Under pip build isolation it
+# fails ("No module named 'torch'") and that ONE failure aborts the whole -r
+# install, leaving diffusers/transformers/opencv uninstalled. So we strip
+# flash_attn out here and install it separately, best-effort, in step 8.
 if [ -f "$MODELS_DIR/Wan2.2/requirements.txt" ]; then
-  echo "==> installing WAN 2.2 requirements"
-  PIP install -r "$MODELS_DIR/Wan2.2/requirements.txt" || echo "!! some WAN deps failed; check logs"
+  echo "==> installing WAN 2.2 requirements (flash_attn handled separately)"
+  WAN_REQS_FILTERED="$(mktemp)"
+  grep -viE '^\s*flash[-_]attn' "$MODELS_DIR/Wan2.2/requirements.txt" > "$WAN_REQS_FILTERED" || true
+  PIP install -r "$WAN_REQS_FILTERED" || echo "!! some WAN deps failed; check logs"
+  rm -f "$WAN_REQS_FILTERED"
 fi
 
 # --- 7. AudioCraft (Meta AudioGen + MusicGen) -----------------------------
-echo "==> installing AudioCraft"
-PIP install -U audiocraft || echo "!! audiocraft install failed; check logs"
+# Optional sound stage. If it fails (e.g. PyAV build), the video pipeline still
+# runs fine — the app just can't add generated audio until this succeeds.
+if "$PYBIN" -c "import audiocraft" 2>/dev/null; then
+  echo "==> AudioCraft already present ✓"
+else
+  echo "==> installing AudioCraft"
+  PIP install -U audiocraft \
+    || echo "!! audiocraft install failed (video still works; check logs / ffmpeg -dev headers)"
+fi
 
 # --- 8. speed kernels (best-effort; failures never block) -----------------
-echo "==> installing FlashAttention (best-effort, big speedup on Blackwell)"
-PIP install flash-attn --no-build-isolation 2>/dev/null || echo "   (flash-attn optional — skipped)"
+# flash-attn needs torch visible during build -> --no-build-isolation. Big
+# speedup on Blackwell but 100% optional; WAN falls back to SDPA without it.
+if "$PYBIN" -c "import flash_attn" 2>/dev/null; then
+  echo "==> FlashAttention already present ✓"
+else
+  echo "==> installing FlashAttention (best-effort, big speedup on Blackwell)"
+  PIP install flash-attn --no-build-isolation 2>/dev/null || echo "   (flash-attn optional — skipped)"
+fi
+
+# Sentinel so run.sh won't loop re-running setup for a stubborn optional dep.
+touch "$ROOT/.setup-complete"
 
 echo ""
 echo "==> setup complete ✓ (env: $STUDIO_ENV_KIND)   run:  bash scripts/run.sh"
