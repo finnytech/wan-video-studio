@@ -83,14 +83,28 @@ if [ -f "$MODELS_DIR/Wan2.2/requirements.txt" ]; then
 fi
 
 # --- 7. AudioCraft (Meta AudioGen + MusicGen) -----------------------------
-# Optional sound stage. If it fails (e.g. PyAV build), the video pipeline still
-# runs fine — the app just can't add generated audio until this succeeds.
+# Optional sound stage. Video always works without it.
+#
+# WHY --no-deps + a pinned version: audiocraft's loose pins make pip BACKTRACK
+# from 1.3.0 down to 1.1.0, which requires spacy==3.5.2 — a version with NO
+# cp312 wheel that then fails to compile (thinc / Cython<3 vs modern NumPy).
+# Pinning 1.3.0 + --no-deps sidesteps that entirely; we then install only the
+# runtime deps AudioGen/MusicGen actually need, all of which ship cp312 wheels
+# (no source builds, no compile hell).
 if "$PYBIN" -c "import audiocraft" 2>/dev/null; then
   echo "==> AudioCraft already present ✓"
 else
-  echo "==> installing AudioCraft"
-  PIP install -U audiocraft \
-    || echo "!! audiocraft install failed (video still works; check logs / ffmpeg -dev headers)"
+  echo "==> installing AudioCraft (pinned 1.3.0, --no-deps + wheel-only runtime deps)"
+  if PIP install "audiocraft==1.3.0" --no-deps; then
+    PIP install \
+      "av>=12.0.0" einops encodec julius num2words omegaconf \
+      "hydra-core>=1.1" hydra_colorlog "spacy>=3.7,<3.9" sentencepiece flashy \
+      || echo "!! some audiocraft runtime deps failed (sound stage may be off)"
+  else
+    echo "!! audiocraft install failed (video still works; sound stage disabled)"
+  fi
+  "$PYBIN" -c "import audiocraft; print('   audiocraft import OK ✓')" 2>/dev/null \
+    || echo "   audiocraft not importable yet — video still works, audio off"
 fi
 
 # --- 8. speed kernels (best-effort; failures never block) -----------------

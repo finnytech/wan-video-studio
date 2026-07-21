@@ -6,3 +6,7 @@ hf_transfer>=0.1.8
 imageio-ffmpeg>=0.5.1
 Pillow>=10.3.0
 numpy>=1.26.0
+# einops is imported directly by WAN 2.2's model code (wan/modules/*). Upstream
+# only pulls it in transitively via flash_attn; since flash_attn is optional and
+# often won't build, we install einops explicitly so the video model always imports.
+einops>=0.7.0

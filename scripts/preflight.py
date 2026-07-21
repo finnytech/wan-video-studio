@@ -46,8 +46,10 @@ def main() -> int:
     core_missing: list[str] = []
     optional_missing: list[str] = []
 
-    # --- python deps needed to even import + run the UI ---
-    for mod in ("gradio", "torch", "huggingface_hub", "numpy"):
+    # --- python deps needed to even import + run the UI + video model ---
+    # einops is imported directly by WAN's model code, so it's CORE (video won't
+    # run without it). flash_attn is NOT listed: WAN falls back to torch SDPA.
+    for mod in ("gradio", "torch", "huggingface_hub", "numpy", "einops"):
         if not _have(mod):
             core_missing.append(f"pip:{mod}")
 
