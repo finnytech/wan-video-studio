@@ -48,6 +48,17 @@ if [ -f "$WAN_INIT" ]; then
   "$PYBIN" "$ROOT/scripts/patch_wan.py" "$WAN_INIT" || true
 fi
 
+# --- give WAN's flash_attention() a real SDPA fallback (every launch) ---------
+# WAN's model.py calls flash_attention() DIRECTLY, and that fn hard-asserts
+# `FLASH_ATTN_2_AVAILABLE`. flash-attn has no cp312 wheel and its source build
+# fails on many boxes -> without this patch EVERY render dies instantly with a
+# bare AssertionError, regardless of free VRAM. This injects a
+# scaled_dot_product_attention fallback so flash-attn becomes truly optional.
+WAN_ATTN="${STUDIO_MODELS_DIR:-$ROOT/models}/Wan2.2/wan/modules/attention.py"
+if [ -f "$WAN_ATTN" ]; then
+  "$PYBIN" "$ROOT/scripts/patch_wan_attention.py" "$WAN_ATTN" || true
+fi
+
 # --- self-healing preflight -----------------------------------------------
 # preflight exit codes: 0 = all present -> launch; 1 = CORE missing -> setup;
 # 2 = only OPTIONAL missing (e.g. sound stack) -> setup once (sentinel), else

@@ -24,20 +24,36 @@ def _log(msg: str) -> None:
     print(f"[runner] {msg}", flush=True)
 
 
-# CUDA OOM / cuDNN-alloc failure signatures we auto-recover from.
+# CUDA OOM / cuDNN-alloc failure signatures we auto-recover from. Kept
+# CUDA-SPECIFIC on purpose: a generic "out of memory" or "failed to allocate"
+# also matches host-RAM/assert/other errors, which the offload ladder can't fix
+# -- and mis-escalating there just wastes 4 pointless GPU attempts (as happened
+# when a flash-attn AssertionError got mis-read as OOM).
 _OOM_MARKERS = (
-    "out of memory",
+    "cuda out of memory",
     "cuda error: out of memory",
+    "cuda_error_out_of_memory",
+    "torch.cuda.outofmemoryerror",
+    "outofmemoryerror",
     "cublas_status_alloc_failed",
     "cudnn_status_alloc_failed",
-    "cuda_error_out_of_memory",
-    "failed to allocate",
-    "torch.cuda.outofmemoryerror",
+)
+
+# Terminal errors that offload/host-RAM spilling can NEVER fix -> veto the ladder
+# even if some OOM-ish word appears in the tail. These are code/env problems
+# (missing kernel, bad import, failed assert), not memory pressure.
+_NON_OOM_VETO = (
+    "assertionerror",
+    "modulenotfounderror",
+    "importerror",
+    "no module named",
 )
 
 
 def _looks_like_oom(tail: str) -> bool:
     low = tail.lower()
+    if any(v in low for v in _NON_OOM_VETO):
+        return False
     return any(m in low for m in _OOM_MARKERS)
 
 

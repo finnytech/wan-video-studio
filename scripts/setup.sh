@@ -89,6 +89,14 @@ if [ -f "$WAN_INIT" ]; then
   echo "==> guarding WAN optional-model imports (t2v-only; skips decord/peft/etc.)"
   "$PYBIN" "$ROOT/scripts/patch_wan.py" "$WAN_INIT" || true
 
+  # WAN's model.py calls flash_attention() directly, which hard-asserts flash-attn.
+  # Inject an SDPA fallback so a failed flash-attn build can't kill every render.
+  WAN_ATTN="$MODELS_DIR/Wan2.2/wan/modules/attention.py"
+  if [ -f "$WAN_ATTN" ]; then
+    echo "==> injecting SDPA fallback into WAN attention (flash-attn optional)"
+    "$PYBIN" "$ROOT/scripts/patch_wan_attention.py" "$WAN_ATTN" || true
+  fi
+
   echo "==> smoke-testing 'import wan' + auto-healing any missing deps"
   _wan_missing() {
     ( cd "$MODELS_DIR/Wan2.2" && "$PYBIN" - <<'PY' 2>/dev/null
@@ -139,7 +147,8 @@ fi
 
 # --- 8. speed kernels (best-effort; failures never block) -----------------
 # flash-attn needs torch visible during build -> --no-build-isolation. Big
-# speedup on Blackwell but 100% optional; WAN falls back to SDPA without it.
+# speedup on Blackwell but 100% optional: patch_wan_attention.py injects a
+# scaled_dot_product_attention fallback into WAN, so a failed build here is fine.
 if "$PYBIN" -c "import flash_attn" 2>/dev/null; then
   echo "==> FlashAttention already present ✓"
 else
