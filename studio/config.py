@@ -105,6 +105,20 @@ CPU_THREADS = _int("STUDIO_CPU_THREADS", 40)
 # Optional prompt extension (needs DashScope key or local Qwen) -> off, self-contained.
 USE_PROMPT_EXTEND = _flag("WAN_PROMPT_EXTEND", False)
 
+# --- Auto-OOM recovery (never hard-crash on CUDA OOM) ----------------------
+# When on, we probe free VRAM at launch, start on the fastest rung that fits, and
+# escalate host-RAM offload one rung at a time on any CUDA-OOM instead of dying.
+# The RTX PRO 6000 normally never leaves rung 0 (resident); this is the seatbelt.
+AUTO_OOM = _flag("WAN_AUTO_OOM", True)
+# Free-VRAM thresholds (GiB) for picking the *starting* rung. Generous defaults:
+#   >= RESIDENT_GB -> rung 0 (all on GPU, fastest)
+#   >= OFFLOAD_GB  -> rung 1 (stream idle expert to pinned host RAM)
+#   >= T5CPU_GB    -> rung 2 (+ T5 text encoder on CPU)
+#   below that     -> rung 3 (+ cast weights to bf16/fp16 on load)
+VRAM_RESIDENT_GB = _float("WAN_VRAM_RESIDENT_GB", 55.0)
+VRAM_OFFLOAD_GB = _float("WAN_VRAM_OFFLOAD_GB", 32.0)
+VRAM_T5CPU_GB = _float("WAN_VRAM_T5CPU_GB", 20.0)
+
 
 # --- Stable Audio Open (sound) ---------------------------------------------
 # ONE diffusers pipeline (StableAudioPipeline) turns TEXT into SFX *and* music,

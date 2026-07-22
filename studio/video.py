@@ -17,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from . import config, prompt_enhance, runner
+from . import config, gpu, prompt_enhance, runner
 
 
 def _log(msg: str) -> None:
@@ -66,6 +66,9 @@ class VideoGenerator:
         out_path = Path(out_path) if out_path else (config.OUTPUT_DIR / "video_silent.mp4")
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # Base command holds only NON-offload flags. The OOM ladder owns the
+        # --offload_model / --t5_cpu / --convert_model_dtype knobs so it can
+        # escalate them per-attempt without duplicating flags.
         cmd = [
             "python", "generate.py",
             "--task", config.VIDEO_TASK,
@@ -80,20 +83,24 @@ class VideoGenerator:
             "--save_file", str(out_path),
             "--prompt", prompt,
         ]
-        if config.OFFLOAD_MODEL:
-            cmd += ["--offload_model", "True"]
-        if config.CONVERT_MODEL_DTYPE:
-            cmd += ["--convert_model_dtype"]
-        if config.T5_CPU:
-            cmd += ["--t5_cpu"]
         if config.USE_PROMPT_EXTEND:
             cmd += ["--use_prompt_extend"]
 
+        # Probe VRAM, pick a starting offload rung, build the escalation ladder.
+        start = gpu.start_rung(log=_log)
+        variants = gpu.ladder(start)
+
         _log(f"render: {num_frames}f ({num_frames/config.FPS:.1f}s @ {config.FPS}fps), "
-             f"{size}, {steps} steps, seed={seed_val}")
+             f"{size}, {steps} steps, seed={seed_val}; "
+             f"OOM ladder: {len(variants)} rung(s) from '{gpu.rung_name(start)}'")
         runner.run(
             cmd, cwd=code_dir, stage="video",
             timeout=config.VIDEO_TIMEOUT, retries=config.STAGE_RETRIES,
+            oom_variants=variants,
+            on_variant=lambda i, extra: _log(
+                f"attempt on rung '{gpu.rung_name(start + i)}'"
+                + (f" [{' '.join(extra)}]" if extra else " [fully resident]")
+            ),
         )
         return self._resolve_output(out_path, code_dir)
 

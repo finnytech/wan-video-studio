@@ -79,6 +79,45 @@ prompt ─► Stable Audio Open (SFX + music), exact video length ─► sound.w
 
 All knobs live in `studio/config.py` and are env-overridable from `run.sh`.
 
+### 2a. Never crash on VRAM — the auto-OOM ladder
+
+The 96 GB card normally keeps the whole 14B model resident (fastest). But if VRAM
+ever gets tight — a shared VM, fragmentation on a long session, or an unusually
+heavy render — the studio **degrades gracefully instead of crashing**.
+
+At launch it **probes free VRAM** (NVML, so it also sees other processes' usage)
+and picks the fastest *rung* that fits. On any CUDA out-of-memory it **climbs one
+rung and retries the same render**, spilling the idle parts of the model to pinned
+host RAM over PCIe (block-swap) and pulling them back when needed:
+
+| Rung | WAN flags added | What moves to host RAM | Speed |
+|------|-----------------|------------------------|-------|
+| 0 `resident` | *(none)* | nothing — whole 14B model on GPU | fastest |
+| 1 `offload-expert` | `--offload_model True` | the idle noise-expert streams to pinned RAM | ~10–20% slower |
+| 2 `+ t5-cpu` | `--t5_cpu` | T5 text encoder stays on CPU (~11 GB freed) | a bit slower |
+| 3 `+ dtype` | `--convert_model_dtype` | weights cast to bf16/fp16 on load (~half VRAM) | slowest, most frugal |
+
+Rungs are monotonic (each only *adds* savings) and every flag is a real, tested
+WAN `generate.py` option — nothing hacky. The allocator is also tuned with
+`expandable_segments:True,garbage_collection_threshold:0.9` to kill fragmentation
+OOMs before the ladder is even needed.
+
+**Honest note:** "instant microsecond swapping" is marketing. Real block-swap is
+PCIe-bound (tens of GB/s), so a spilled render is somewhat slower — but it
+*finishes* instead of dying with `CUDA out of memory`. That's the whole point.
+
+| Env knob | Default | Meaning |
+|----------|---------|---------|
+| `WAN_AUTO_OOM` | `1` | master switch for the probe + escalation ladder (`0` = old fixed config) |
+| `WAN_VRAM_RESIDENT_GB` | `55` | free-VRAM ≥ this → start on rung 0 (fully resident) |
+| `WAN_VRAM_OFFLOAD_GB` | `32` | free-VRAM ≥ this → start on rung 1 (offload expert) |
+| `WAN_VRAM_T5CPU_GB` | `20` | free-VRAM ≥ this → start on rung 2 (+ T5 on CPU); below → rung 3 |
+| `WAN_OFFLOAD_MODEL` / `WAN_T5_CPU` / `WAN_CONVERT_DTYPE` | `0` | force a *minimum* rung by hand; the ladder never starts weaker than these |
+
+The live rung and each escalation are printed to the log, e.g.
+`VRAM probe: 41.3 GB free / 96 GB total -> starting offload rung 1 (offload-expert)`
+and `video: CUDA OOM -> escalating offload to variant 3 (offload+t5-cpu) ...`.
+
 ## 3. Uncensored / custom checkpoint
 
 The default video weights are the official `Wan-AI/Wan2.2-T2V-A14B`. To use an
@@ -107,11 +146,12 @@ scripts/run.sh          launches the UI + prints the private link & token
 scripts/reset_weights.sh wipe + re-download WAN weights (e.g. to switch checkpoints)
 studio/config.py        all knobs: repos, weights, resolutions, speed flags, audio modes
 studio/models.py        clone WAN + download weights; verify Stable Audio Open
-studio/video.py         WAN 2.2 driver (official generate.py)
+studio/video.py         WAN 2.2 driver (official generate.py) + auto-OOM ladder wiring
+studio/gpu.py           VRAM probe (NVML/torch) + OOM escalation ladder (rungs 0-3)
 studio/audio_worker.py  standalone Stable Audio Open generator (own process)
 studio/audio.py         audio stage wrapper + timeline mux
 studio/mux.py           ffmpeg mux + browser-friendly normalize
-studio/runner.py        shared subprocess runner (timeout / retry / logs / TF32 env)
+studio/runner.py        shared subprocess runner (timeout / retry / logs / TF32 env / OOM auto-escalate)
 studio/auth.py          one-time token gate
 studio/app.py           Gradio UI (prompt / length / resolution / sound → video + download)
 ```

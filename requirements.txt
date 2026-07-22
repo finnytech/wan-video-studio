@@ -15,3 +15,8 @@ einops>=0.7.0
 # comes in via WAN's requirements (setup.sh ensures it's >=0.29 for StableAudio).
 soundfile>=0.12.1
 sentencepiece>=0.1.99
+# Accurate free-VRAM probing for the auto-OOM ladder (studio/gpu.py). NVML sees
+# VRAM used by *other* processes on the card too, not just our torch context, so
+# we pick the right starting offload rung on shared VMs. Falls back to
+# torch.cuda.mem_get_info if this isn't importable.
+nvidia-ml-py>=12.535.108

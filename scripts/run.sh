@@ -17,7 +17,13 @@ export WAN_CONVERT_DTYPE="${WAN_CONVERT_DTYPE:-0}"
 export WAN_T5_CPU="${WAN_T5_CPU:-0}"
 export WAN_SAMPLE_STEPS="${WAN_SAMPLE_STEPS:-30}"
 export ENABLE_TF32="${ENABLE_TF32:-1}"
-export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+# Auto-OOM seatbelt ON by default: probe VRAM, start resident, escalate host-RAM
+# offload rung-by-rung on any CUDA OOM instead of crashing. Set WAN_AUTO_OOM=0 to
+# force a single fixed config (the old behaviour).
+export WAN_AUTO_OOM="${WAN_AUTO_OOM:-1}"
+# expandable_segments kills fragmentation OOMs; garbage_collection_threshold lets
+# the allocator reclaim early instead of dying at a hard ceiling.
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True,garbage_collection_threshold:0.9}"
 export TOKENIZERS_PARALLELISM=false
 export HF_HUB_ENABLE_HF_TRANSFER="${HF_HUB_ENABLE_HF_TRANSFER:-1}"
 
