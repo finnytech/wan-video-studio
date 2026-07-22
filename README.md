@@ -22,10 +22,18 @@ resident for maximum speed.
 ```bash
 git clone https://github.com/finnytech/wan-video-studio.git
 cd wan-video-studio
-export HF_TOKEN=***           # for HuggingFace weight downloads (avoids throttling)
+# OPTIONAL: paste a REAL token (starts with hf_). Otherwise just skip this line —
+# the WAN video weights are a public repo and download fine anonymously.
+# Do NOT paste a placeholder with '...'/'…' in it; a bad token is now ignored
+# automatically, but a real token avoids HF rate-limiting.
+export HF_TOKEN=hf_your_real_token_here
 bash scripts/setup.sh            # clones WAN 2.2, downloads weights, installs Stable Audio Open
 bash scripts/run.sh              # prints your PRIVATE share URL + access token
 ```
+
+> **No token? Fine.** The video model (`Wan-AI/Wan2.2-T2V-A14B`) is public, so
+> setup/run work with **no** `HF_TOKEN` at all. A real token only speeds up
+> downloads (avoids throttling) and unlocks the gated Stable Audio Open weights.
 
 > **Sound is a gated model.** Stable Audio Open needs a one-time license accept on
 > your HF account (the same one behind `HF_TOKEN`):

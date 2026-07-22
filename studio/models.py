@@ -20,8 +20,51 @@ def _log(msg: str) -> None:
     print(f"[models] {msg}", flush=True)
 
 
+# Obvious placeholder tokens we should ignore rather than send to HF (a copied
+# README placeholder like `dein_h…hier` would otherwise crash urllib3 when it
+# tries to latin-1 encode the HTTP Authorization header).
+_PLACEHOLDER_TOKENS = {
+    "hf_xxx",
+    "changeme",
+    "placeholder",
+    "token",
+    "none",
+}
+
+
+def _sanitize_token(raw):
+    """Return a usable HF token or None.
+
+    Real HF tokens are ASCII (`hf_...`). We reject anything that:
+      * is empty/whitespace,
+      * still contains a placeholder,
+      * or can't be encoded as latin-1 (HTTP headers are latin-1, so a stray
+        unicode char like '…' would raise UnicodeEncodeError deep in urllib3).
+    In every reject case we fall back to anonymous access (WAN weights are
+    public), so a bad token can never crash the render.
+    """
+    if not raw:
+        return None
+    tok = raw.strip()
+    if not tok:
+        return None
+    low = tok.lower()
+    if low in _PLACEHOLDER_TOKENS or "dein_" in low or "your_" in low:
+        _log("⚠️  HF_TOKEN looks like a placeholder — ignoring it (using anonymous access)")
+        return None
+    try:
+        tok.encode("latin-1")
+    except UnicodeEncodeError:
+        _log("⚠️  HF_TOKEN contains non-ASCII characters (e.g. a copied '…') — "
+             "ignoring it (using anonymous access). Re-export a real hf_... token.")
+        return None
+    return tok
+
+
 def _hf_token():
-    return os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    return _sanitize_token(
+        os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    )
 
 
 def _enable_fast_transfer() -> None:
@@ -37,8 +80,9 @@ def _enable_fast_transfer() -> None:
 
 
 def _warn_token() -> None:
-    if not (os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")):
-        _log("⚠️  HF_TOKEN not set — HF downloads are rate-limited. export HF_TOKEN=***")
+    if _hf_token() is None:
+        _log("ℹ️  No usable HF_TOKEN — downloading public weights anonymously "
+             "(may be rate-limited). Export a real hf_... token for faster pulls.")
 
 
 def _has_weights(path: Path) -> bool:
@@ -72,13 +116,29 @@ def ensure_video() -> tuple[Path, Path]:
 
     from huggingface_hub import snapshot_download
 
+    token = _hf_token()
     _log(f"downloading video weights {config.VIDEO_MODEL_REPO} -> {wdir}")
-    snapshot_download(
-        repo_id=config.VIDEO_MODEL_REPO,
-        local_dir=str(wdir),
-        token=_hf_token(),
-        max_workers=8,
-    )
+    try:
+        snapshot_download(
+            repo_id=config.VIDEO_MODEL_REPO,
+            local_dir=str(wdir),
+            token=token,
+            max_workers=8,
+        )
+    except Exception as e:  # noqa: BLE001
+        # If a token slipped through and still broke the request, retry once
+        # anonymously — the official WAN weights are a public repo.
+        if token is not None:
+            _log(f"weights download failed with token ({type(e).__name__}: {e}); "
+                 "retrying anonymously (public repo)")
+            snapshot_download(
+                repo_id=config.VIDEO_MODEL_REPO,
+                local_dir=str(wdir),
+                token=None,
+                max_workers=8,
+            )
+        else:
+            raise
     _log("video weights ready ✓")
     return config.VIDEO_CODE_DIR, wdir
 
